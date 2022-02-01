@@ -1,5 +1,5 @@
 # Scoping the utility of "technical abatement/mitigation potential" analysis for biodiversity consevration
-Repository for the analysis of "Technical [biodiversity & ecosystem] mitigation potential of protected areas, avoiding habitat loss and restoration in Australia" which will be submitted as a publication in 2022. This analysis was led by Carla Archibald and data collation was assisted by Brett Bryan, Michalis Hadjikakou and Emily Nicholson.
+Repository for the analysis of "Technical [biodiversity & ecosystem] mitigation potential of protected areas, avoiding habitat loss and restoration in Australia" which will be submitted as a publication in 2022. This analysis was led by Carla Archibald and assisted by Brett Bryan, Michalis Hadjikakou and Emily Nicholson.
 
 This repository will contain all data, code and documentation to reproduce the:
 
