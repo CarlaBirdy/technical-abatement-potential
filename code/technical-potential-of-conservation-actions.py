@@ -26,6 +26,12 @@ from matplotlib.colors import ListedColormap
 cell_zones_df_file = "N://Planet-A//Data-Master//LUTO_2.0_input_data//Input_data//2D_Spatial_Snapshot//cell_zones_df.h5"
 cell_zones_df = pd.read_hdf(cell_zones_df_file)
 
+cell_biophysical_df_file = "N://Planet-A//Data-Master//LUTO_2.0_input_data//Input_data//2D_Spatial_Snapshot//cell_biophysical_df.h5"
+cell_biophysical_df = pd.read_hdf(cell_biophysical_df_file)
+
+# Join cell_df files imported above
+cell_df = cell_zones_df.join(cell_biophysical_df, on='CELL_ID', how='left', lsuffix='_zones', rsuffix='_biophysical', sort=False)
+
 # NLUM
 infile = "N://Planet-A//Data-Master//National_Landuse_Map//NLUM_2010-11_mask.tif"
 
@@ -38,10 +44,10 @@ cmap = ListedColormap(['#E0F5EB', '#34a169','white'])
 ################ Create some helper data and functions ########################
  
 # View columns and unique values
-for col in cell_zones_df.columns:
+for col in cell_df.columns:
     print(col)
 
-dfUnique = pd.DataFrame(cell_zones_df.PRIMARY_V7.unique())  
+dfUnique = pd.DataFrame(cell_df.PROT_AREAS_DESC.unique())  
 pd.set_option('display.max_rows', dfUnique.shape[0]+1)
 dfUnique
 
@@ -55,7 +61,7 @@ with rasterio.open(infile) as rst:
     NLUM_ID_raster = rst.read(1, masked=True) 
     
     # Create a 0/1 binary mask
-    NLUM_mask = NLUM_ID_raster.mask == False
+    nlumMask = NLUM_ID_raster.mask == False
     
     # Get metadata and update parameters
     NLUM_transform = rst.transform
@@ -124,50 +130,106 @@ def create_lu_sieve_mask(name,index,dframe):
         # r'N:\Planet-A\LUF-Modelling\Land-Use-Sieve\Data\Masks\SOL_Conservation_Government-protected-area_Potential-area-mask_1km.tif'
         #with rasterio.open(outfile, "w+", **meta) as dst:
         #    dst.write(np2dArray.astype(np.uint8), indexes = 1)
-                      
+  
+                    
 ################ Determine spatial footprint of consevration action ########################
 #
-# Heuristic rues are developed for each conservation action based upon land tenure, land cover and land use. 
 # 
 # --- [PR-GPA] Government protected areas
 #              Heuristic: Government protected areas can occur on all land exept freehold land, and must 
-PrGpaIndex = cell_zones_df.query("(TENURE_DESC in ['Public land - other','Nature conservation areas']) and \
-                                  (PRIMARY_V7 in ['1 Conservation and natural environments'])").index
+PrGpaIndex = cell_df.query("(TENURE_DESC in ['Public land - other','Nature conservation areas']) and \
+                            (VAST_CLASS in ['Bare','Residual','Replaced']) and \
+                            (PROT_AREAS_DESC in ['Not a protected area'])").index
 
-reservePublicMask = create_lu_sieve_mask('PR-GPA_MASK', PrGpaIndex, cell_zones_df)
+reservePublicMask = create_lu_sieve_mask('PR-GPA_MASK', PrGpaIndex, cell_df)
 
-# --- [PR-PPA] Private land conservation (Ecosystem regeneration and protection on private land)
-PrPpaIndex  = cell_zones_df.query("(TENURE_DESC in ['Private land']) and \
-                                   (VEG_COND_DESC == ['No modification of native vegetation'])").index
+# --- [PR-PPA] Private land conservation or Avoided habitat loss (Ecosystem regeneration and protection on private land)
+PrPpaIndex  = cell_df.query("(TENURE_DESC in ['Private land']) and \
+                             (VAST_CLASS in ['Bare','Residual','Replaced']) and \
+                             (PROT_AREAS_DESC in ['Not a protected area'])").index
 
-reservePrivateMask = create_lu_sieve_mask('PR-PPA_MASK', PrPpaIndex, cell_zones_df)
+reservePrivateMask = create_lu_sieve_mask('PR-PPA_MASK', PrPpaIndex, cell_df)
 
 # --- [PR-IPA] Indigenous protected areas
-PrIpaIndex  = cell_zones_df.query("(TENURE_DESC in ['Aboriginal land - traditional indigenous uses','Aboriginal land - other non-agricultural']) and \
-                                   (VEG_COND_DESC == ['No modification of native vegetation'])").index
+PrIpaIndex  = cell_df.query("(TENURE_DESC in ['Aboriginal land - traditional indigenous uses','Aboriginal land - other non-agricultural']) and \
+                             (VAST_CLASS in ['Bare','Residual','Replaced']) and \
+                             (PROT_AREAS_DESC in ['Not a protected area'])").index
 
-reserveIndigenousMask = create_lu_sieve_mask('PR-IPA_MASK', PrIpaIndex, cell_zones_df)
-
-# --- [PR-AHL] Avoided habitat loss
-PrAhlIndex = cell_zones_df.query("(TENURE_DESC in ['Private land']) and \
-                                  (PRIMARY_V7 in ['2 Production from relatively natural environments'])").index
-
-reservePrivateMask = create_lu_sieve_mask('PR-PPA_MASK', PrAhlIndex, cell_zones_df)
+reserveIndigenousMask = create_lu_sieve_mask('PR-IPA_MASK', PrIpaIndex, cell_df)
 
 # --- [PR-NRV] Native revegetation
-PrNrvIndex  = cell_zones_df.query("(TENURE_DESC in ['Private land']) and \
-                                   (VEG_COND_DESC == ['Modification of native vegetation'])").index
+PrNrvIndex  = cell_df.query("(TENURE_DESC in ['Private land']) and \
+                             (VAST_CLASS in ['Modified','Removed','Transformed']) and \
+                             (PROT_AREAS_DESC in ['Not a protected area'])").index
 
-natiRevegMask = create_lu_sieve_mask('PR-NRV_MASK', PrNrvIndex, cell_zones_df)
+natiRevegMask = create_lu_sieve_mask('PR-NRV_MASK', PrNrvIndex, cell_df)
 
-# --- [PR-RIP] Riparian restoration
-#PrRipIndex = cell_zones_df.query("(RIPARIAN_WATER_BODY >= 100) or \
-#                                  (RIPARIAN_RIVERS_STRA >= 1) and \
-#                                  (STUDY_AREA_MASK == 1)").index
+# --- Current protected areas
+nrsPaIndex  = cell_df.query("(PROT_AREAS_DESC not in ['Not a protected area'])").index
 
-#ripManMask = create_lu_sieve_mask('PR-RIP_MASK', PrRipIndex, cell_df)
+paMask = create_lu_sieve_mask('PA_MASK', nrsPaIndex, cell_df)
 
 ################ Determine technical potential of consevration action to contribute towards conservation and sustainability ########################
+#
+# 
+# biodiversity data
+year_file = "N://Planet-A//LUF-Modelling//LUTO2.0_Reporting//Data//year_concordance.csv"
+year_dataFrame = pd.read_csv(year_file)
+yearlist = sorted(year_dataFrame["YEAR"].to_list())
+
+all_biodiversity_ssp245_2100_file = "N:/Planet-A/Data-Master/Biodiversity_priority_areas/Biodiversity/Annual-taxa-condition_yearly_interpolated_1970-2100_1km/all/GeoTiffs/Biodiversity-all_ssp245_1970-2100_AUS_1km_ConditionYearly.tif"
+
+baseYear = yearlist.index(1990)+1
+with rasterio.open(all_biodiversity_ssp245_2100_file) as src:
+    all_biodiversity_base = src.read(baseYear) # loads a 2D masked array of the year 2100         
+    # Flatten 2D array to 1D array of valid values only
+    all_biodiversity_base = all_biodiversity_base[nlumMask == 1]    
+    # Round and add data to cell_df dataframe
+    cell_df['BIODIV_CONT_SSP245_1990'] = all_biodiversity_base.astype(np.float64)
+    cell_df['BIODIV_CONT_SSP245_1990'] = cell_df['BIODIV_CONT_SSP245_1990'].replace({-9999.0: 0})    
+
+futureYear = yearlist.index(2030)+1
+with rasterio.open(all_biodiversity_ssp245_2100_file) as src:
+    all_biodiversity_future = src.read(futureYear) # loads a 2D masked array of the year 2100         
+    # Flatten 2D array to 1D array of valid values only
+    all_biodiversity_future_flat = all_biodiversity_future[nlumMask == 1]    
+    # Round and add data to cell_df dataframe
+    cell_df['BIODIV_CONT_SSP245_2030'] = all_biodiversity_future_flat.astype(np.float64)
+    cell_df['BIODIV_CONT_SSP245_2030'] = cell_df['BIODIV_CONT_SSP245_2030'].replace({-9999.0: 0})    
+
+
+cell_df_summary = cell_df[["CELL_ID_zones","CELL_HA_zones","PR-GPA_MASK","BIODIV_CONT_SSP245_2030"]].copy() 
+# Pivot to calculate biodiversity consition of land use types
+cell_zones_df_pas_pivot = pd.DataFrame(cell_df_summary.pivot_table(index='PR-GPA_MASK', values=['BIODIV_CONT_SSP245_2030'], aggfunc=np.sum).stack())
+# Index to columns
+cell_zones_df_pas_pivot.reset_index(inplace=True) 
+ 
+cell_df_summary = cell_df[["CELL_ID_zones","CELL_HA_zones","PR-PPA_MASK","BIODIV_CONT_SSP245_2030"]].copy() 
+# Pivot to calculate biodiversity consition of land use types
+cell_zones_df_pas_pivot = pd.DataFrame(cell_df_summary.pivot_table(index='PR-PPA_MASK', values=['BIODIV_CONT_SSP245_2030'], aggfunc=np.sum).stack())
+# Index to columns
+cell_zones_df_pas_pivot.reset_index(inplace=True) 
+
+cell_df_summary = cell_df[["CELL_ID_zones","CELL_HA_zones","PR-IPA_MASK","BIODIV_CONT_SSP245_2030"]].copy() 
+# Pivot to calculate biodiversity consition of land use types
+cell_zones_df_pas_pivot = pd.DataFrame(cell_df_summary.pivot_table(index='PR-IPA_MASK', values=['BIODIV_CONT_SSP245_2030'], aggfunc=np.sum).stack())
+# Index to columns
+cell_zones_df_pas_pivot.reset_index(inplace=True) 
+
+cell_df_summary = cell_df[["CELL_ID_zones","CELL_HA_zones","PR-NRV_MASK","BIODIV_CONT_SSP245_2030"]].copy() 
+# Pivot to calculate biodiversity consition of land use types
+cell_zones_df_pas_pivot = pd.DataFrame(cell_df_summary.pivot_table(index='PR-NRV_MASK', values=['BIODIV_CONT_SSP245_2030'], aggfunc=np.sum).stack())
+# Index to columns
+cell_zones_df_pas_pivot.reset_index(inplace=True)    
+
+cell_df_summary = cell_df[["CELL_ID_zones","CELL_HA_zones","PA_MASK","BIODIV_CONT_SSP245_2030"]].copy() 
+# Pivot to calculate biodiversity consition of land use types
+cell_zones_df_pas_pivot = pd.DataFrame(cell_df_summary.pivot_table(index='PA_MASK', values=['BIODIV_CONT_SSP245_2030'], aggfunc=np.sum).stack())
+# Index to columns
+cell_zones_df_pas_pivot.reset_index(inplace=True)    
 
 
 # End :) 
+
+
+
