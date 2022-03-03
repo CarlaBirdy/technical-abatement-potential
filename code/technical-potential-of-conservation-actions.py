@@ -275,6 +275,11 @@ actions_df = pd.DataFrame({'Action type':[],
 
 actions_df = actions_df.astype(dtype= {"Action type":"object","Indicator":"string","Indicator type":"string","Metric":"string","Source":"string"})
 
+# Begin action loop
+for action in actions:
+
+
+
 #### Calculate Area 
 for action in actions:
     # Pivot to calculate biodiversity consition of land use types
