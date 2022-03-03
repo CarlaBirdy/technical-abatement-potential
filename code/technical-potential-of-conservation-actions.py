@@ -260,7 +260,7 @@ monoRevegMask = footprint('RG-CMP_MASK', RgCarbonMonoIndex, cell_df,"N://Planet-
 # 
 
 # Create lists of actions
-actions = ['NATURAL_MASK','RESTORE_MASK','PR-ALL_MASK','PR-NRS_MASK','RG-ALL_MASK','PR-GPA_MASK','PR-PPA_MASK','RG-HIR_MASK','RG-CMP_MASK','RG-NRV_MASK']
+actions = ['PR-ALL_MASK','RG-ALL_MASK']#'PR-NRS_MASK','PR-GPA_MASK','PR-PPA_MASK','RG-HIR_MASK','RG-CMP_MASK','RG-NRV_MASK']
 conservation_actions = ['NATURAL_MASK','PR-NRS_MASK','PR-ALL_MASK','PR-GPA_MASK','PR-PPA_MASK']#,'PR-PLC_MASK','PR-IPA_MASK','PR-ICA_MASK']
 restoration_actions = ['RESTORE_MASK','RG-ALL_MASK','RG-HIR_MASK','RG-NRV_MASK','RG-CMP_MASK']
 
@@ -275,15 +275,18 @@ actions_df = pd.DataFrame({'Action type':[],
 
 actions_df = actions_df.astype(dtype= {"Action type":"object","Indicator":"string","Indicator type":"string","Metric":"string","Source":"string"})
 
+in_df = cell_df
+
 # Begin action loop
-for action in actions:
+def technical_potential(action,in_df,out_df): 
+        """Returns a tabular report `out_df` of the full technical potential impact of an `action` to conserve biodiversity and ecosystems, contribute towards sustainability outcomes and impact agricultural production using `in_data`."""
 
+    # Extract action type, RG for restoration and PR for protection
+    actionType = action[:2]
 
-
-#### Calculate Area 
-for action in actions:
+    # --- AREA
     # Pivot to calculate biodiversity consition of land use types
-    pivot = pd.DataFrame(cell_df.pivot_table(index= action, values=['CELL_HA'], aggfunc=np.sum).stack())
+    pivot = pd.DataFrame(in_df.pivot_table(index= action, values=['CELL_HA'], aggfunc=np.sum).stack())
     # Index to columns
     pivot.reset_index(inplace=True) 
     # Rename columns
@@ -308,12 +311,14 @@ for action in actions:
     pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
     # Append data to actions_df
     actions_df = actions_df.append(pivot_drop)
+    # Append data to actions_df
+    out_df = actions_df.append(pivot_drop)
 
+    # --- BIODIVERISTY
+    #### Calculate overlap with suitable climate space (biodiversity indicator) ,   ~~~ Only do this on private land for avoided loss
 
-#### Calculate overlap with suitable climate space (biodiversity indicator) ,   ~~~ Only do this on private land for avoided loss
-for action in actions:
     # Pivot to calculate biodiversity consition of land use types
-    pivot = pd.DataFrame(cell_df.pivot_table(index= action, values=['BIODIV_HIST_1990','BIODIV_SSP126_2030','BIODIV_SSP245_2030','BIODIV_SSP370_2030','BIODIV_SSP585_2030',
+    pivot = pd.DataFrame(in_df.pivot_table(index= action, values=['BIODIV_HIST_1990','BIODIV_SSP126_2030','BIODIV_SSP245_2030','BIODIV_SSP370_2030','BIODIV_SSP585_2030',
                                                                     'MAMMALS_HIST_1990','MAMMALS_SSP126_2030','MAMMALS_SSP245_2030','MAMMALS_SSP370_2030','MAMMALS_SSP585_2030',
                                                                     'BIRDS_HIST_1990','BIRDS_SSP126_2030','BIRDS_SSP245_2030','BIRDS_SSP370_2030','BIRDS_SSP585_2030',
                                                                     'REPTILES_HIST_1990','REPTILES_SSP126_2030','REPTILES_SSP245_2030','REPTILES_SSP370_2030','REPTILES_SSP585_2030',
@@ -338,18 +343,18 @@ for action in actions:
     # Reorder columns
     pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
     # Append data to actions_df
-    actions_df = actions_df.append(pivot_drop)
+    out_df = actions_df.append(pivot_drop)
 
-#### Calculate overlap with biome and vegetation community (ecosystem indicator)
+    #### ECOSYSTEMS    
+    #### Calculate overlap with biome and vegetation community (ecosystem indicator)
 
-# Create list of ecosystem data I want to report on
-ecosystems = ['IBRA_SUB_NAME','IBRA_REG_NAME','NVIS_EXTANT_MVG_NAME','NVIS_EXTANT_MVS_NAME','NVIS_PRE-EURO_MVG_NAME','NVIS_PRE-EURO_MVS_NAME']
+    # Create list of ecosystem data I want to report on
+    ecosystems = ['IBRA_SUB_NAME','IBRA_REG_NAME','NVIS_EXTANT_MVG_NAME','NVIS_EXTANT_MVS_NAME','NVIS_PRE-EURO_MVG_NAME','NVIS_PRE-EURO_MVS_NAME']
 
-for action in actions:
     # iterate over ecosystem data
     for ecosystem in ecosystems:
         # Pivot to calculate biodiversity consition of land use types
-        pivot = pd.DataFrame(cell_df.pivot_table(index= [action,ecosystem], values='CELL_HA', aggfunc=np.sum).stack())
+        pivot = pd.DataFrame(in_df.pivot_table(index= [action,ecosystem], values='CELL_HA', aggfunc=np.sum).stack())
         # Index to columns
         pivot.reset_index(inplace=True) 
         # Rename columns
@@ -371,183 +376,145 @@ for action in actions:
         # Reorder columns
         pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
         # Append data to actions_df
-        actions_df = actions_df.append(pivot_drop)
+        out_df = actions_df.append(pivot_drop)
 
-outpath = "N://Planet-A//LUF-Modelling//Technical-potential-analysis//Conservation-actions//Data//actions_df_area-bio-eco.csv"
-actions_df.to_csv(outpath,index=False, line_terminator='\n')
 
 #### Calculate carbon emmissions abatement for conservation actions (carbon indicator, avoided loss)
+    if actionType == "PR":
+        # Run procedure for soil carbon
+        # Pivot to calculate biodiversity consition of land use types
+        pivot = pd.DataFrame(in_df.pivot_table(index= action, values=['SOC_T_HA_TOP_30CM'], aggfunc=np.sum).stack())
+        # Index to columns
+        pivot.reset_index(inplace=True) 
+        # Rename columns
+        pivot_temp = pivot.rename(columns={action:'Action status','level_1':'Source',0:'Value'})
+        # Filter out 0's
+        pivot_rn = pivot_temp[pivot_temp['Action status']==1]
+        # Drop column
+        pivot_drop  = pivot_rn.drop(columns={"Action status"})
+        # Convert Tonnes per hectare to Tonnes per km2, and round
+        pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
+        # Populate Source data column
+        pivot_drop['Indicator'] = "Soil organic carbon (top 30cm)"
+        # Populate Metric columns
+        pivot_drop['Metric'] = "Tonnes per km2"
+        # Populate Indicator Type column
+        pivot_drop['Indicator type'] = "Carbon"
+        # Populate Action Type column
+        pivot_drop['Action type'] = action
+        # Reorder columns
+        pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
+        # Append data to actions_df
+        out_df = actions_df.append(pivot_drop)
+     
+    # Run procedure for remnant vegetation (avoided loss)
+        # Pivot to calculate biodiversity consition of land use types
+        pivot = pd.DataFrame(in_df.pivot_table(index= action, values=['REMNANT_VEG_T_CO2_HA'], aggfunc=np.sum).stack())
+        # Index to columns
+        pivot.reset_index(inplace=True) 
+        # Rename columns
+        pivot_temp = pivot.rename(columns={action:'Action status','level_1':'Source',0:'Value'})
+        # Filter out 0's
+        pivot_rn = pivot_temp[pivot_temp['Action status']==1]
+        # Drop column
+        pivot_drop  = pivot_rn.drop(columns={"Action status"})
+        # Convert Tonnes per hectare to Tonnes per km2, and round
+        pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
+        # Populate Source data column
+        pivot_drop['Indicator'] = "Carbon abatement"
+        # Populate Metric columns
+        pivot_drop['Metric'] = "CO2 per km2" 
+        # Populate Indicator Type column
+        pivot_drop['Indicator type'] = "Carbon"
+        # Populate Action Type column
+        pivot_drop['Action type'] = action
+        # Reorder columns
+        pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
+        # Append data to actions_df
+        out_df = actions_df.append(pivot_drop)
 
-# Run procedure for soil carbon
-for action in conservation_actions:
-    # Pivot to calculate biodiversity consition of land use types
-    pivot = pd.DataFrame(cell_df.pivot_table(index= action, values=['SOC_T_HA_TOP_30CM'], aggfunc=np.sum).stack())
-    # Index to columns
-    pivot.reset_index(inplace=True) 
-    # Rename columns
-    pivot_temp = pivot.rename(columns={action:'Action status','level_1':'Source',0:'Value'})
-    # Filter out 0's
-    pivot_rn = pivot_temp[pivot_temp['Action status']==1]
-    # Drop column
-    pivot_drop  = pivot_rn.drop(columns={"Action status"})
-    # Convert Tonnes per hectare to Tonnes per km2, and round
-    pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
-    # Populate Source data column
-    pivot_drop['Indicator'] = "Soil organic carbon (top 30cm)"
-    # Populate Metric columns
-    pivot_drop['Metric'] = "Tonnes per km2"
-    # Populate Indicator Type column
-    pivot_drop['Indicator type'] = "Carbon"
-    # Populate Action Type column
-    pivot_drop['Action type'] = action
-    # Reorder columns
-    pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
-    # Append data to actions_df
-    actions_df = actions_df.append(pivot_drop)
-
-# Run procedure for remnant vegetation (avoided loss)
-for action in conservation_actions:
-    # Pivot to calculate biodiversity consition of land use types
-    pivot = pd.DataFrame(cell_df.pivot_table(index= action, values=['REMNANT_VEG_T_CO2_HA'], aggfunc=np.sum).stack())
-    # Index to columns
-    pivot.reset_index(inplace=True) 
-    # Rename columns
-    pivot_temp = pivot.rename(columns={action:'Action status','level_1':'Source',0:'Value'})
-    # Filter out 0's
-    pivot_rn = pivot_temp[pivot_temp['Action status']==1]
-    # Drop column
-    pivot_drop  = pivot_rn.drop(columns={"Action status"})
-    # Convert Tonnes per hectare to Tonnes per km2, and round
-    pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
-    # Populate Source data column
-    pivot_drop['Indicator'] = "Carbon abatement"
-    # Populate Metric columns
-    pivot_drop['Metric'] = "CO2 per km2" 
-    # Populate Indicator Type column
-    pivot_drop['Indicator type'] = "Carbon"
-    # Populate Action Type column
-    pivot_drop['Action type'] = action
-    # Reorder columns
-    pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
-    # Append data to actions_df
-    actions_df = actions_df.append(pivot_drop)
-
-
-#### Calculate carbon emmissions sequestration for restoration actions (carbon indicator, revegetation)
-
-# Pivot to calculate carbon/emmissions sequestration of land use types
-pivot = pd.DataFrame(cell_df.pivot_table(index= 'RG-HIR_MASK', values=['HIR_BLOCK_TREES_AVG_T_CO2_HA_YR','HIR_BLOCK_DEBRIS_AVG_T_CO2_HA_YR','HIR_BLOCK_SOIL_AVG_T_CO2_HA_YR','HIR_RIP_TREES_AVG_T_CO2_HA_YR','HIR_RIP_DEBRIS_AVG_T_CO2_HA_YR','HIR_RIP_SOIL_AVG_T_CO2_HA_YR'], aggfunc=np.sum).stack()) # Need to consider the proportion of a cell under Belt planting
-# Index to columns
-pivot.reset_index(inplace=True) 
-# Rename columns
-pivot_temp = pivot.rename(columns={'RG-HIR_MASK':'Action status','level_1':'Source',0:'Value'})
-# Filter out 0's
-pivot_rn = pivot_temp[pivot_temp['Action status']==1]
-# Drop column
-pivot_drop  = pivot_rn.drop(columns={"Action status"})
-# Populate Source data column
-pivot_drop['Indicator'] = "Carbon sequestration"
-# Convert Tonnes per hectare to Tonnes per km2, and round
-pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
-# Populate Metric columns
-pivot_drop['Metric'] = "CO2 per km2" 
-# Populate Indicator Type column
-pivot_drop['Indicator type'] = "Carbon"
-# Populate Action Type column
-pivot_drop['Action type'] = "RG-HIR_MASK"
-# Reorder columns
-pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
-# Append data to actions_df
-actions_df = actions_df.append(pivot_drop)
-
-# Pivot to calculate carbon/emmissions sequestration of land use types
-pivot = pd.DataFrame(cell_df.pivot_table(index= 'RG-NRV_MASK', values=['EP_BLOCK_TREES_AVG_T_CO2_HA_YR','EP_BLOCK_DEBRIS_AVG_T_CO2_HA_YR','EP_BLOCK_SOIL_AVG_T_CO2_HA_YR','EP_RIP_TREES_AVG_T_CO2_HA_YR','EP_RIP_DEBRIS_AVG_T_CO2_HA_YR','EP_RIP_SOIL_AVG_T_CO2_HA_YR'], aggfunc=np.sum).stack())
-# Index to columns
-pivot.reset_index(inplace=True) 
-# Rename columns
-pivot_temp = pivot.rename(columns={'RG-NRV_MASK':'Action status','level_1':'Source',0:'Value'})
-# Filter out 0's
-pivot_rn = pivot_temp[pivot_temp['Action status']==1]
-# Drop column
-pivot_drop  = pivot_rn.drop(columns={"Action status"})
-# Convert Tonnes per hectare to Tonnes per km2, and round
-pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
-# Populate Source data column
-pivot_drop['Indicator'] = "Carbon sequestration"
-# Populate Metric columns
-pivot_drop['Metric'] = "CO2 per km2" 
-# Populate Indicator Type column
-pivot_drop['Indicator type'] = "Carbon"
-# Populate Action Type column
-pivot_drop['Action type'] = "RG-NRV_MASK"
-# Reorder columns
-pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
-# Append data to actions_df
-actions_df = actions_df.append(pivot_drop)
-
-# Pivot to calculate carbon/emmissions sequestration of land use types
-pivot = pd.DataFrame(cell_df.pivot_table(index= 'RG-CMP_MASK', values=['CP_BLOCK_TREES_AVG_T_CO2_HA_YR','CP_BLOCK_DEBRIS_AVG_T_CO2_HA_YR','CP_BLOCK_SOIL_AVG_T_CO2_HA_YR','CP_BELT_TREES_AVG_T_CO2_HA_YR','CP_BELT_DEBRIS_AVG_T_CO2_HA_YR','CP_BELT_SOIL_AVG_T_CO2_HA_YR'], aggfunc=np.sum).stack())
-# Index to columns
-pivot.reset_index(inplace=True) 
-# Rename columns
-pivot_temp = pivot.rename(columns={'RG-CMP_MASK':'Action status','level_1':'Source',0:'Value'})
-# Filter out 0's
-pivot_rn = pivot_temp[pivot_temp['Action status']==1]
-# Drop column
-pivot_drop  = pivot_rn.drop(columns={"Action status"})
-# Convert Tonnes per hectare to Tonnes per km2, and round
-pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
-# Populate Source data column
-pivot_drop['Indicator'] = "Carbon sequestration"
-# Populate Metric columns
-pivot_drop['Metric'] = "CO2 per km2" 
-# Populate Indicator Type column
-pivot_drop['Indicator type'] = "Carbon"
-# Populate Action Type column
-pivot_drop['Action type'] = "RG-CMP_MASK"
-# Reorder columns
-pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
-# Append data to actions_df
-actions_df = actions_df.append(pivot_drop)
-
+    if actionType == "RG":
+        
+        restorationType = action[3:-5]
+        
+        if restorationType == 'NRV':
+            fulcamType = 'EP'
+            
+        if restorationType == 'HIR':
+            fulcamType = 'HIR'
+        
+        if restorationType == 'CMP':
+            fulcamType = 'CP'
+            
+        #### Calculate carbon emmissions sequestration for restoration actions (carbon indicator, revegetation)
+        
+        if restorationType == 'CMP':
+            columnNames = [fulcamType+'_BLOCK_TREES_AVG_T_CO2_HA_YR',fulcamType+'_BLOCK_DEBRIS_AVG_T_CO2_HA_YR',fulcamType+'_BLOCK_SOIL_AVG_T_CO2_HA_YR',fulcamType+'_BELT_TREES_AVG_T_CO2_HA_YR',fulcamType+'_BELT_DEBRIS_AVG_T_CO2_HA_YR',fulcamType+'_BELT_SOIL_AVG_T_CO2_HA_YR']
+        else:
+            columnNames = [fulcamType+'_BLOCK_TREES_AVG_T_CO2_HA_YR',fulcamType+'_BLOCK_DEBRIS_AVG_T_CO2_HA_YR',fulcamType+'_BLOCK_SOIL_AVG_T_CO2_HA_YR',fulcamType+'_RIP_TREES_AVG_T_CO2_HA_YR',fulcamType+'_RIP_DEBRIS_AVG_T_CO2_HA_YR',fulcamType+'_RIP_SOIL_AVG_T_CO2_HA_YR']
+        
+        # Pivot to calculate carbon/emmissions sequestration of land use types
+        pivot = pd.DataFrame(in_df.pivot_table(index= action, values=columnNames, aggfunc=np.sum).stack())
+        # Index to columns
+        pivot.reset_index(inplace=True) 
+        # Rename columns
+        pivot_temp = pivot.rename(columns={action:'Action status','level_1':'Source',0:'Value'})
+        # Filter out 0's
+        pivot_rn = pivot_temp[pivot_temp['Action status']==1]
+        # Drop column
+        pivot_drop  = pivot_rn.drop(columns={"Action status"})
+        # Populate Source data column
+        pivot_drop['Indicator'] = "Carbon sequestration"
+        # Convert Tonnes per hectare to Tonnes per km2, and round
+        pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
+        # Populate Metric columns
+        pivot_drop['Metric'] = "CO2 per km2" 
+        # Populate Indicator Type column
+        pivot_drop['Indicator type'] = "Carbon"
+        # Populate Action Type column
+        pivot_drop['Action type'] = action
+        # Reorder columns
+        pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
+        # Append data to actions_df
+        out_df = actions_df.append(pivot_drop)
 
 # Add soil indicators 
 #  INVEST_RKLS * C_FACTOR_VEG * P_FACTOR_AG (for veg p = 1) .... 
 
 # Conservation
-for action in conservation_actions:
-    cell_df_sub = cell_df[[action,"CELL_HA", "TENURE_NAME", "INVEST_RKLS","C_FACTOR_VEG", "P_FACTOR_AG"]].copy()
-    cell_df_sub['Value']  = cell_df_sub['CELL_HA'] * (cell_df_sub['INVEST_RKLS'] * cell_df_sub['C_FACTOR_VEG']* cell_df_sub['P_FACTOR_AG'])
-    # Filter for only private land
-    cell_df_sub = cell_df_sub[cell_df_sub['TENURE_NAME']=='Private land']
-    cell_df_sub_2 = cell_df_sub[[action,"Value"]]
-    # Pivot to calculate biodiversity consition of land use types, index= action,LAND TENURE... risk on land clearing on [private] free or leasehold land
-    pivot = pd.DataFrame(cell_df_sub.pivot_table(index= action, values=['Value'], aggfunc=np.sum).stack())
-    # Index to columns
-    pivot.reset_index(inplace=True) 
-    # Rename columns
-    pivot_temp = pivot.rename(columns={action:'Action status','level_1':'Source',0:'Value'})
-    #if pivot_temp['Action status']==1:
-    # Filter out 0's
-    pivot_rn = pivot_temp[pivot_temp['Action status']==1]
-    # Drop column
-    pivot_drop  = pivot_rn.drop(columns={"Action status"})
-    # Convert Tonnes per hectare to Tonnes per km2, and round
-    pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
-    # Populate Source data column
-    pivot_drop['Indicator'] = "Avoided soil loss"
-    # Populate Source data column
-    pivot_drop['Source'] = "INVEST_RKLS*C_FACTOR_VEG*P_FACTOR_AG"
-    # Populate Source columns
-    pivot_drop['Metric'] = "[Add metric]" 
-    # Populate Indicator Type column
-    pivot_drop['Indicator type'] = "Soil"
-    # Populate Action Type column
-    pivot_drop['Action type'] = action
-    # Reorder columns
-    pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
-    # Append data to actions_df
-    actions_df = actions_df.append(pivot_drop)
+    if actionType == "PR":
+        cell_df_sub = in_df[[action,"CELL_HA", "TENURE_NAME", "INVEST_RKLS","C_FACTOR_VEG", "P_FACTOR_AG"]].copy()
+        cell_df_sub['Value']  = cell_df_sub['CELL_HA'] * (cell_df_sub['INVEST_RKLS'] * cell_df_sub['C_FACTOR_VEG']* cell_df_sub['P_FACTOR_AG'])
+        # Filter for only private land
+        cell_df_sub = cell_df_sub[cell_df_sub['TENURE_NAME']=='Private land']
+        cell_df_sub_2 = cell_df_sub[[action,"Value"]]
+        # Pivot to calculate biodiversity consition of land use types, index= action,LAND TENURE... risk on land clearing on [private] free or leasehold land
+        pivot = pd.DataFrame(cell_df_sub.pivot_table(index= action, values=['Value'], aggfunc=np.sum).stack())
+        # Index to columns
+        pivot.reset_index(inplace=True) 
+        # Rename columns
+        pivot_temp = pivot.rename(columns={action:'Action status','level_1':'Source',0:'Value'})
+        #if pivot_temp['Action status']==1:
+        # Filter out 0's
+        pivot_rn = pivot_temp[pivot_temp['Action status']==1]
+        # Drop column
+        pivot_drop  = pivot_rn.drop(columns={"Action status"})
+        # Convert Tonnes per hectare to Tonnes per km2, and round
+        pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
+        # Populate Source data column
+        pivot_drop['Indicator'] = "Avoided soil loss"
+        # Populate Source data column
+        pivot_drop['Source'] = "INVEST_RKLS*C_FACTOR_VEG*P_FACTOR_AG"
+        # Populate Source columns
+        pivot_drop['Metric'] = "[Add metric]" 
+        # Populate Indicator Type column
+        pivot_drop['Indicator type'] = "Soil"
+        # Populate Action Type column
+        pivot_drop['Action type'] = action
+        # Reorder columns
+        pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
+        # Append data to actions_df
+        out_df = actions_df.append(pivot_drop)
 
 # Restoration
 
@@ -574,39 +541,73 @@ for action in conservation_actions:
 # Look for the difference between the 2, for restoration actions MASK * CELL_HA * (WATER_YIELD_SR_ML_HA - WATER_YIELD_DR_ML_HA), reduced water yield from restoration
 
 # Run procedure for conservation actions,   ~~~ Only do this on private land
-for action in conservation_actions:
-    cell_df_sub = cell_df[[action,"CELL_HA", "TENURE_NAME", "WATER_YIELD_SR_ML_HA","WATER_YIELD_DR_ML_HA"]].copy()
-    cell_df_sub['Value']  = cell_df_sub['CELL_HA'] * (cell_df_sub['WATER_YIELD_DR_ML_HA'] - cell_df_sub['WATER_YIELD_SR_ML_HA'])
-    # Filter for only private land
-    cell_df_sub = cell_df_sub[cell_df_sub['TENURE_NAME']=='Private land']
-    cell_df_sub_2 = cell_df_sub[[action,"Value"]]
-    # Pivot to calculate biodiversity consition of land use types, index= action,LAND TENURE... risk on land clearing on [private] free or leasehold land
-    pivot = pd.DataFrame(cell_df_sub.pivot_table(index= action, values=['Value'], aggfunc=np.sum).stack())
-    # Index to columns
-    pivot.reset_index(inplace=True) 
-    # Rename columns
-    pivot_temp = pivot.rename(columns={action:'Action status','level_1':'Source',0:'Value'})
-    #if pivot_temp['Action status']==1:
-    # Filter out 0's
-    pivot_rn = pivot_temp[pivot_temp['Action status']==1]
-    # Drop column
-    pivot_drop  = pivot_rn.drop(columns={"Action status"})
-    # Convert Tonnes per hectare to Tonnes per km2, and round
-    pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
-    # Populate Source data column
-    pivot_drop['Indicator'] = "Avoided water loss"
-    # Populate Source data column
-    pivot_drop['Source'] = "WATER_YIELD_SR/DR_ML_HA/CELL_HA"
-    # Populate Source columns
-    pivot_drop['Metric'] = "GL" 
-    # Populate Indicator Type column
-    pivot_drop['Indicator type'] = "Water"
-    # Populate Action Type column
-    pivot_drop['Action type'] = action
-    # Reorder columns
-    pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
-    # Append data to actions_df
-    actions_df = actions_df.append(pivot_drop)
+    if actionType == "PR":
+        cell_df_sub = in_df[[action,"CELL_HA", "TENURE_NAME", "WATER_YIELD_SR_ML_HA","WATER_YIELD_DR_ML_HA"]].copy()
+        cell_df_sub['Value']  = cell_df_sub['CELL_HA'] * (cell_df_sub['WATER_YIELD_DR_ML_HA'] - cell_df_sub['WATER_YIELD_SR_ML_HA'])
+        # Filter for only private land
+        cell_df_sub = cell_df_sub[cell_df_sub['TENURE_NAME']=='Private land']
+        cell_df_sub_2 = cell_df_sub[[action,"Value"]]
+        # Pivot to calculate biodiversity consition of land use types, index= action,LAND TENURE... risk on land clearing on [private] free or leasehold land
+        pivot = pd.DataFrame(cell_df_sub.pivot_table(index= action, values=['Value'], aggfunc=np.sum).stack())
+        # Index to columns
+        pivot.reset_index(inplace=True) 
+        # Rename columns
+        pivot_temp = pivot.rename(columns={action:'Action status','level_1':'Source',0:'Value'})
+        #if pivot_temp['Action status']==1:
+        # Filter out 0's
+        pivot_rn = pivot_temp[pivot_temp['Action status']==1]
+        # Drop column
+        pivot_drop  = pivot_rn.drop(columns={"Action status"})
+        # Convert Tonnes per hectare to Tonnes per km2, and round
+        pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
+        # Populate Source data column
+        pivot_drop['Indicator'] = "Avoided water loss"
+        # Populate Source data column
+        pivot_drop['Source'] = "WATER_YIELD_SR/DR_ML_HA/CELL_HA"
+        # Populate Source columns
+        pivot_drop['Metric'] = "GL" 
+        # Populate Indicator Type column
+        pivot_drop['Indicator type'] = "Water"
+        # Populate Action Type column
+        pivot_drop['Action type'] = action
+        # Reorder columns
+        pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
+        # Append data to actions_df
+        out_df = actions_df.append(pivot_drop)
+
+    if actionType == "RG":
+        cell_df_sub = in_df[[action,"CELL_HA", "TENURE_NAME", "WATER_YIELD_SR_ML_HA","WATER_YIELD_DR_ML_HA"]].copy()
+        cell_df_sub['Value']  = cell_df_sub['CELL_HA'] * (cell_df_sub['WATER_YIELD_SR_ML_HA'] - cell_df_sub['WATER_YIELD_DR_ML_HA'])
+        # Filter for only private land
+        cell_df_sub = cell_df_sub[cell_df_sub['TENURE_NAME']=='Private land']
+        cell_df_sub_2 = cell_df_sub[[action,"Value"]]
+        # Pivot to calculate biodiversity consition of land use types, index= action,LAND TENURE... risk on land clearing on [private] free or leasehold land
+        pivot = pd.DataFrame(cell_df_sub.pivot_table(index= action, values=['Value'], aggfunc=np.sum).stack())
+        # Index to columns
+        pivot.reset_index(inplace=True) 
+        # Rename columns
+        pivot_temp = pivot.rename(columns={action:'Action status','level_1':'Source',0:'Value'})
+        #if pivot_temp['Action status']==1:
+        # Filter out 0's
+        pivot_rn = pivot_temp[pivot_temp['Action status']==1]
+        # Drop column
+        pivot_drop  = pivot_rn.drop(columns={"Action status"})
+        # Convert Tonnes per hectare to Tonnes per km2, and round
+        pivot_drop['Value'] = round(pivot_drop['Value'] / 100,0)
+        # Populate Source data column
+        pivot_drop['Indicator'] = "Avoided water loss"
+        # Populate Source data column
+        pivot_drop['Source'] = "WATER_YIELD_SR/DR_ML_HA/CELL_HA"
+        # Populate Source columns
+        pivot_drop['Metric'] = "GL" 
+        # Populate Indicator Type column
+        pivot_drop['Indicator type'] = "Water"
+        # Populate Action Type column
+        pivot_drop['Action type'] = action
+        # Reorder columns
+        pivot_drop = pivot_drop[['Action type','Indicator type','Source','Indicator','Metric','Value']]
+        # Append data to actions_df
+        out_df = actions_df.append(pivot_drop)
 
 
 #### Calculate overlap with land use types (production indicator)
@@ -618,7 +619,7 @@ for action in actions:
     # iterate over ecosystem data
     for landUse in landUses:
         # Pivot to calculate biodiversity consition of land use types
-        pivot = pd.DataFrame(cell_df.pivot_table(index= [action,landUse], values='CELL_HA', aggfunc=np.sum).stack())
+        pivot = pd.DataFrame(in_df.pivot_table(index= [action,landUse], values='CELL_HA', aggfunc=np.sum).stack())
         # Index to columns
         pivot.reset_index(inplace=True) 
         # Rename columns
@@ -638,11 +639,11 @@ for action in actions:
         # Reorder columns
         pivot_drop_rn = pivot_drop_rn[['Action type','Indicator type','Source','Indicator','Metric','Value']]
         # Append data to actions_df
-        actions_df = actions_df.append(pivot_drop_rn)
+        out_df = actions_df.append(pivot_drop_rn)
 
 for action in actions:
     # Pivot to calculate biodiversity consition of land use types
-    pivot = pd.DataFrame(cell_df.pivot_table(index= [action,'LU_DESC'], values='Yield_cell', aggfunc=np.sum).stack())
+    pivot = pd.DataFrame(in_df.pivot_table(index= [action,'LU_DESC'], values='Yield_cell', aggfunc=np.sum).stack())
     # Index to columns
     pivot.reset_index(inplace=True) 
     # Rename columns
@@ -660,7 +661,7 @@ for action in actions:
     # Reorder columns
     pivot_drop_rn = pivot_drop_rn[['Action type','Indicator type','Source','Indicator','Metric','Value']]
     # Append data to actions_df
-    actions_df = actions_df.append(pivot_drop_rn)
+    out_df = actions_df.append(pivot_drop_rn)
 
 
 
@@ -671,7 +672,7 @@ for action in actions:
 #for action in actions:
 #    for region in regions:
         # Pivot to calculate biodiversity consition of land use types
-#        pivot = pd.DataFrame(cell_df.pivot_table(index= [action,region], values='CELL_HA', aggfunc=np.sum).stack())
+#        pivot = pd.DataFrame(in_df.pivot_table(index= [action,region], values='CELL_HA', aggfunc=np.sum).stack())
         # Index to columns
 #        pivot.reset_index(inplace=True) 
 #        pivot_drop  = pivot.drop(columns={"level_2"})
@@ -730,4 +731,6 @@ plt.plot(cell_df_biodiv_sort["CELL_HA"], cell_df_biodiv_sort["BIODIV_HIST_1990_C
 # - Minimize food tradeoffs.
 # - Minimize area tradeoffs.
 
+outpath = "N://Planet-A//LUF-Modelling//Technical-potential-analysis//Conservation-actions//Data//actions_df_area-bio-eco.csv"
+actions_df.to_csv(outpath,index=False, line_terminator='\n')
 
